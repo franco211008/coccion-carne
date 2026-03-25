@@ -5,41 +5,60 @@ import "@tensorflow/tfjs";
 export default function App() {
   const [corte, setCorte] = useState("lomo vetado");
   const [grosor, setGrosor] = useState(2.5);
-  const [termino] = useState("tres_cuartos");
   const [resultado, setResultado] = useState(null);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const modeloRef = useRef(null);
 
-  // 🔥 Cargar modelo IA
+  // 🔥 Cargar modelo
   useEffect(() => {
-    const cargarModelo = async () => {
+    const cargar = async () => {
       modeloRef.current = await cocoSsd.load();
-      console.log("Modelo cargado");
+      console.log("Modelo listo");
     };
-    cargarModelo();
+    cargar();
   }, []);
 
   // 📸 Activar cámara
   const iniciarCamara = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-    });
-    videoRef.current.srcObject = stream;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+      });
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current.play();
+        };
+      }
+
+      // iniciar detección automática
+      setTimeout(() => detectar(), 1000);
+    } catch (error) {
+      console.error("Error cámara:", error);
+    }
   };
 
-  // 🤖 Detectar objetos
+  // 🤖 Detectar
   const detectar = async () => {
     if (
       modeloRef.current &&
       videoRef.current &&
       videoRef.current.readyState === 4
     ) {
-      const predicciones = await modeloRef.current.detect(videoRef.current);
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
 
-      const ctx = canvasRef.current.getContext("2d");
-      ctx.clearRect(0, 0, 640, 480);
+      // ajustar tamaño dinámico
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      const predicciones = await modeloRef.current.detect(video);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       predicciones.forEach((pred) => {
         const [x, y, width, height] = pred.bbox;
@@ -49,16 +68,16 @@ export default function App() {
         ctx.strokeRect(x, y, width, height);
 
         ctx.fillStyle = "red";
-        ctx.fillText(pred.class, x, y - 5);
+        ctx.fillText(pred.class, x, y > 10 ? y - 5 : 10);
       });
     }
 
     requestAnimationFrame(detectar);
   };
 
-  // 🥩 Cálculo de cocción
+  // 🥩 cálculo
   const calcular = () => {
-    const base_tiempos = {
+    const base = {
       "lomo vetado": 3,
       "lomo liso": 2.5,
       "punta picana": 3.5,
@@ -66,16 +85,12 @@ export default function App() {
       huachalomo: 4.5,
     };
 
-    const tiempoPorLado =
-      base_tiempos[corte] * grosor * 1.2 * 1.05;
-
-    const tiempoTotal = tiempoPorLado * 2 + 1;
-    const reposo = Math.max(2, grosor);
+    const tiempo = base[corte] * grosor * 1.2 * 1.05;
 
     setResultado({
-      total: tiempoTotal.toFixed(2),
-      porLado: tiempoPorLado.toFixed(2),
-      reposo: reposo.toFixed(2),
+      total: (tiempo * 2 + 1).toFixed(2),
+      porLado: tiempo.toFixed(2),
+      reposo: Math.max(2, grosor).toFixed(2),
     });
   };
 
@@ -88,24 +103,18 @@ export default function App() {
         alignItems: "center",
         background: "linear-gradient(135deg, #1e1e2f, #3a3a5f)",
         color: "white",
-        fontFamily: "Arial",
       }}
     >
       <div
         style={{
           background: "#2a2a40",
-          padding: 25,
+          padding: 20,
           borderRadius: 15,
-          width: 340,
-          boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+          width: 350,
         }}
       >
-        <h1 style={{ textAlign: "center", marginBottom: 20 }}>
-          🥩 Cocción Parrilla
-        </h1>
+        <h2 style={{ textAlign: "center" }}>🥩 Cocción Parrilla</h2>
 
-        {/* 🔥 FORMULARIO */}
-        <label>Tipo de corte</label>
         <select
           value={corte}
           onChange={(e) => setCorte(e.target.value)}
@@ -118,7 +127,6 @@ export default function App() {
           <option value="huachalomo">Huachalomo</option>
         </select>
 
-        <label>Grosor (cm)</label>
         <input
           type="number"
           min={1}
@@ -128,48 +136,43 @@ export default function App() {
           style={{ width: "100%", marginBottom: 10 }}
         />
 
-        <p style={{ fontSize: 12, opacity: 0.7 }}>
-          Método: Parrilla 🔥 | Temperatura: Ambiente
-        </p>
-
-        <button
-          onClick={calcular}
-          style={{
-            width: "100%",
-            padding: 10,
-            background: "#ff4d4d",
-            border: "none",
-            borderRadius: 8,
-            color: "white",
-            fontWeight: "bold",
-            cursor: "pointer",
-            marginBottom: 10,
-          }}
-        >
+        <button onClick={calcular} style={{ width: "100%" }}>
           Calcular
         </button>
 
-        {/* 📸 CÁMARA */}
+        {/* 📸 CAMARA */}
         <button
           onClick={iniciarCamara}
-          style={{ width: "100%", marginBottom: 10 }}
+          style={{ width: "100%", marginTop: 10 }}
         >
           📸 Activar cámara
         </button>
 
-        <div style={{ position: "relative" }}>
+        <div
+          style={{
+            position: "relative",
+            width: "100%",
+            height: 250,
+            marginTop: 10,
+            background: "black",
+            borderRadius: 10,
+            overflow: "hidden",
+          }}
+        >
           <video
             ref={videoRef}
             autoPlay
-            width="100%"
-            height="240"
-            style={{ borderRadius: 10 }}
+            playsInline
+            muted
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
           />
 
           <canvas
             ref={canvasRef}
-            width="640"
-            height="480"
             style={{
               position: "absolute",
               top: 0,
@@ -180,19 +183,11 @@ export default function App() {
           />
         </div>
 
-        <button
-          onClick={detectar}
-          style={{ width: "100%", marginTop: 10 }}
-        >
-          🤖 Detectar
-        </button>
-
-        {/* RESULTADO */}
         {resultado && (
-          <div style={{ marginTop: 15 }}>
-            <p>⏱️ Total: {resultado.total} min</p>
-            <p>🔥 Por lado: {resultado.porLado} min</p>
-            <p>🛑 Reposo: {resultado.reposo} min</p>
+          <div style={{ marginTop: 10 }}>
+            <p>Total: {resultado.total} min</p>
+            <p>Por lado: {resultado.porLado} min</p>
+            <p>Reposo: {resultado.reposo} min</p>
           </div>
         )}
       </div>
