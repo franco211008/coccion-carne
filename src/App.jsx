@@ -11,7 +11,7 @@ export default function App() {
   const canvasRef = useRef(null);
   const modeloRef = useRef(null);
 
-  // 🔥 Cargar modelo
+  // 🔥 cargar modelo IA
   useEffect(() => {
     const cargar = async () => {
       modeloRef.current = await cocoSsd.load();
@@ -20,28 +20,29 @@ export default function App() {
     cargar();
   }, []);
 
-  // 📸 Activar cámara
+  // 📸 cámara trasera
   const iniciarCamara = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: {
+          facingMode: { ideal: "environment" }, // trasera
+        },
+        audio: false,
       });
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current.play();
-        };
-      }
+      videoRef.current.srcObject = stream;
 
-      // iniciar detección automática
+      videoRef.current.onloadedmetadata = () => {
+        videoRef.current.play();
+      };
+
       setTimeout(() => detectar(), 1000);
-    } catch (error) {
-      console.error("Error cámara:", error);
+    } catch (err) {
+      console.error("Error cámara:", err);
     }
   };
 
-  // 🤖 Detectar
+  // 🤖 detección + medición
   const detectar = async () => {
     if (
       modeloRef.current &&
@@ -52,7 +53,6 @@ export default function App() {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext("2d");
 
-      // ajustar tamaño dinámico
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
 
@@ -63,19 +63,34 @@ export default function App() {
       predicciones.forEach((pred) => {
         const [x, y, width, height] = pred.bbox;
 
-        ctx.strokeStyle = "red";
+        // 🔴 dibujar caja
+        ctx.strokeStyle = "#ff4d4d";
         ctx.lineWidth = 2;
         ctx.strokeRect(x, y, width, height);
 
-        ctx.fillStyle = "red";
-        ctx.fillText(pred.class, x, y > 10 ? y - 5 : 10);
+        // 🧠 estimar grosor
+        const grosorPx = Math.min(width, height);
+
+        // 🔥 conversión aproximada (ajustable)
+        const grosorCm = (grosorPx / 50).toFixed(1);
+
+        // actualizar automáticamente
+        setGrosor(Number(grosorCm));
+
+        ctx.fillStyle = "#ff4d4d";
+        ctx.font = "14px Arial";
+        ctx.fillText(
+          `${pred.class} ~ ${grosorCm} cm`,
+          x,
+          y > 10 ? y - 5 : 10
+        );
       });
     }
 
     requestAnimationFrame(detectar);
   };
 
-  // 🥩 cálculo
+  // 🥩 cálculo cocción
   const calcular = () => {
     const base = {
       "lomo vetado": 3,
@@ -103,18 +118,24 @@ export default function App() {
         alignItems: "center",
         background: "linear-gradient(135deg, #1e1e2f, #3a3a5f)",
         color: "white",
+        fontFamily: "Arial",
       }}
     >
       <div
         style={{
           background: "#2a2a40",
-          padding: 20,
+          padding: 25,
           borderRadius: 15,
-          width: 350,
+          width: 340,
+          boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
         }}
       >
-        <h2 style={{ textAlign: "center" }}>🥩 Cocción Parrilla</h2>
+        <h1 style={{ textAlign: "center", marginBottom: 20 }}>
+          🥩 Cocción Parrilla
+        </h1>
 
+        {/* FORMULARIO */}
+        <label>Tipo de corte</label>
         <select
           value={corte}
           onChange={(e) => setCorte(e.target.value)}
@@ -127,6 +148,7 @@ export default function App() {
           <option value="huachalomo">Huachalomo</option>
         </select>
 
+        <label>Grosor (cm)</label>
         <input
           type="number"
           min={1}
@@ -136,27 +158,58 @@ export default function App() {
           style={{ width: "100%", marginBottom: 10 }}
         />
 
-        <button onClick={calcular} style={{ width: "100%" }}>
+        <label>Término</label>
+        <select disabled style={{ width: "100%", marginBottom: 10 }}>
+          <option>Tres cuartos</option>
+        </select>
+
+        <p style={{ fontSize: 12, opacity: 0.7 }}>
+          Método: Parrilla 🔥 | Temperatura: Ambiente
+        </p>
+
+        <button
+          onClick={calcular}
+          style={{
+            width: "100%",
+            padding: 10,
+            background: "#ff4d4d",
+            border: "none",
+            borderRadius: 8,
+            color: "white",
+            fontWeight: "bold",
+            cursor: "pointer",
+            marginBottom: 10,
+          }}
+        >
           Calcular
         </button>
 
-        {/* 📸 CAMARA */}
+        {/* 📸 BOTÓN CÁMARA */}
         <button
           onClick={iniciarCamara}
-          style={{ width: "100%", marginTop: 10 }}
+          style={{
+            width: "100%",
+            padding: 10,
+            marginBottom: 10,
+            borderRadius: 8,
+            border: "none",
+            background: "#3a86ff",
+            color: "white",
+            fontWeight: "bold",
+          }}
         >
-          📸 Activar cámara
+          📸 Usar cámara (medición automática)
         </button>
 
+        {/* 📸 VISOR */}
         <div
           style={{
             position: "relative",
             width: "100%",
-            height: 250,
-            marginTop: 10,
-            background: "black",
+            height: 240,
             borderRadius: 10,
             overflow: "hidden",
+            background: "black",
           }}
         >
           <video
@@ -183,11 +236,12 @@ export default function App() {
           />
         </div>
 
+        {/* RESULTADOS */}
         {resultado && (
-          <div style={{ marginTop: 10 }}>
-            <p>Total: {resultado.total} min</p>
-            <p>Por lado: {resultado.porLado} min</p>
-            <p>Reposo: {resultado.reposo} min</p>
+          <div style={{ marginTop: 15 }}>
+            <p>⏱️ Total: {resultado.total} min</p>
+            <p>🔥 Por lado: {resultado.porLado} min</p>
+            <p>🛑 Reposo: {resultado.reposo} min</p>
           </div>
         )}
       </div>
