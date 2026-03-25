@@ -1,4 +1,6 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import * as cocoSsd from "@tensorflow-models/coco-ssd";
+import "@tensorflow/tfjs";
 
 export default function App() {
   const [corte, setCorte] = useState("lomo vetado");
@@ -7,71 +9,98 @@ export default function App() {
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const modeloRef = useRef(null);
 
-  const start = useRef(null);
+  // 🔥 cargar modelo
+  useEffect(() => {
+    const cargar = async () => {
+      modeloRef.current = await cocoSsd.load();
+      console.log("Modelo IA listo");
+    };
+    cargar();
+  }, []);
 
-  // 📸 cámara trasera
+  // 📸 cámara trasera + 60fps
   const iniciarCamara = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 640 },
-        height: { ideal: 480 },
-      },
-    });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 60, max: 60 }, // 🔥 intento 60fps
+        },
+        audio: false,
+      });
 
-    videoRef.current.srcObject = stream;
+      const video = videoRef.current;
+      video.srcObject = stream;
+
+      video.onloadedmetadata = () => {
+        video.play();
+      };
+
+      iniciarLoop();
+    } catch (err) {
+      console.error("Error cámara:", err);
+    }
   };
 
-  // 🖐️ iniciar selección
-  const handleStart = (e) => {
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
-
-    start.current = { x, y };
+  // 🔥 LOOP ULTRA FLUIDO
+  const iniciarLoop = () => {
+    const loop = async () => {
+      await detectar();
+      requestAnimationFrame(loop); // fluidez visual
+    };
+    loop();
   };
 
-  // 🖐️ dibujar selección
-  const handleMove = (e) => {
-    if (!start.current) return;
+  // 🤖 detección optimizada
+  let ultimaDeteccion = 0;
 
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+  const detectar = async () => {
+    const ahora = Date.now();
 
-    const ctx = canvasRef.current.getContext("2d");
-    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    // 🔥 IA solo cada 300ms (clave para fluidez)
+    if (ahora - ultimaDeteccion < 300) return;
+    ultimaDeteccion = ahora;
 
-    ctx.strokeStyle = "#00ff99";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(
-      start.current.x,
-      start.current.y,
-      x - start.current.x,
-      y - start.current.y
-    );
-  };
+    if (
+      modeloRef.current &&
+      videoRef.current &&
+      videoRef.current.readyState === 4
+    ) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
 
-  // 🧠 calcular grosor al soltar
-  const handleEnd = (e) => {
-    if (!start.current) return;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
 
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = (e.changedTouches ? e.changedTouches[0].clientX : e.clientX) - rect.left;
-    const y = (e.changedTouches ? e.changedTouches[0].clientY : e.clientY) - rect.top;
+      const predicciones = await modeloRef.current.detect(video);
 
-    const width = Math.abs(x - start.current.x);
-    const height = Math.abs(y - start.current.y);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const grosorPx = Math.min(width, height);
+      predicciones.forEach((pred) => {
+        const [x, y, width, height] = pred.bbox;
 
-    // 🔥 conversión aproximada
-    const grosorCm = (grosorPx / 50).toFixed(1);
+        ctx.strokeStyle = "#ff4d4d";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, width, height);
 
-    setGrosor(Number(grosorCm));
+        const grosorPx = Math.min(width, height);
+        const grosorCm = (grosorPx / 50).toFixed(1);
 
-    start.current = null;
+        // 🔥 evita re-render innecesario
+        if (Math.abs(grosor - grosorCm) > 0.2) {
+          setGrosor(Number(grosorCm));
+        }
+
+        ctx.fillStyle = "#ff4d4d";
+        ctx.font = "14px Arial";
+        ctx.fillText(`${pred.class} ~ ${grosorCm} cm`, x, y - 5);
+      });
+    }
   };
 
   // 🥩 cálculo
@@ -102,18 +131,24 @@ export default function App() {
         alignItems: "center",
         background: "linear-gradient(135deg, #1e1e2f, #3a3a5f)",
         color: "white",
+        fontFamily: "Arial",
       }}
     >
       <div
         style={{
           background: "#2a2a40",
-          padding: 20,
+          padding: 25,
           borderRadius: 15,
-          width: 350,
+          width: 340,
+          boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
         }}
       >
-        <h2 style={{ textAlign: "center" }}>🥩 Cocción Parrilla</h2>
+        <h1 style={{ textAlign: "center", marginBottom: 20 }}>
+          🥩 Cocción Parrilla
+        </h1>
 
+        {/* FORM */}
+        <label>Tipo de corte</label>
         <select
           value={corte}
           onChange={(e) => setCorte(e.target.value)}
@@ -126,6 +161,7 @@ export default function App() {
           <option value="huachalomo">Huachalomo</option>
         </select>
 
+        <label>Grosor (cm)</label>
         <input
           type="number"
           min={1}
@@ -135,30 +171,73 @@ export default function App() {
           style={{ width: "100%", marginBottom: 10 }}
         />
 
-        <button onClick={calcular} style={{ width: "100%" }}>
+        <label>Término</label>
+        <select disabled style={{ width: "100%", marginBottom: 10 }}>
+          <option>Tres cuartos</option>
+        </select>
+
+        <p style={{ fontSize: 12, opacity: 0.7 }}>
+          Método: Parrilla 🔥 | Temperatura: Ambiente
+        </p>
+
+        <button
+          onClick={calcular}
+          style={{
+            width: "100%",
+            padding: 10,
+            background: "#ff4d4d",
+            border: "none",
+            borderRadius: 8,
+            color: "white",
+            fontWeight: "bold",
+            cursor: "pointer",
+            marginBottom: 10,
+          }}
+        >
           Calcular
         </button>
 
+        {/* CAMARA */}
         <button
           onClick={iniciarCamara}
-          style={{ width: "100%", marginTop: 10 }}
+          style={{
+            width: "100%",
+            padding: 10,
+            marginBottom: 10,
+            borderRadius: 8,
+            border: "none",
+            background: "#3a86ff",
+            color: "white",
+            fontWeight: "bold",
+          }}
         >
-          📸 Activar cámara
+          📸 Cámara automática (IA)
         </button>
 
-        {/* 🎯 ZONA INTERACTIVA */}
-        <div style={{ position: "relative", marginTop: 10 }}>
+        <div
+          style={{
+            position: "relative",
+            width: "100%",
+            height: 240,
+            borderRadius: 10,
+            overflow: "hidden",
+            background: "black",
+          }}
+        >
           <video
             ref={videoRef}
             autoPlay
             playsInline
-            style={{ width: "100%", borderRadius: 10 }}
+            muted
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
           />
 
           <canvas
             ref={canvasRef}
-            width="640"
-            height="480"
             style={{
               position: "absolute",
               top: 0,
@@ -166,20 +245,14 @@ export default function App() {
               width: "100%",
               height: "100%",
             }}
-            onMouseDown={handleStart}
-            onMouseMove={handleMove}
-            onMouseUp={handleEnd}
-            onTouchStart={handleStart}
-            onTouchMove={handleMove}
-            onTouchEnd={handleEnd}
           />
         </div>
 
         {resultado && (
-          <div style={{ marginTop: 10 }}>
-            <p>Total: {resultado.total} min</p>
-            <p>Por lado: {resultado.porLado} min</p>
-            <p>Reposo: {resultado.reposo} min</p>
+          <div style={{ marginTop: 15 }}>
+            <p>⏱️ Total: {resultado.total} min</p>
+            <p>🔥 Por lado: {resultado.porLado} min</p>
+            <p>🛑 Reposo: {resultado.reposo} min</p>
           </div>
         )}
       </div>
