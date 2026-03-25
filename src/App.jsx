@@ -11,39 +11,60 @@ export default function App() {
   const canvasRef = useRef(null);
   const modeloRef = useRef(null);
 
-  // 🔥 cargar modelo IA
+  // 🔥 cargar modelo
   useEffect(() => {
     const cargar = async () => {
       modeloRef.current = await cocoSsd.load();
-      console.log("Modelo listo");
+      console.log("Modelo IA listo");
     };
     cargar();
   }, []);
 
-  // 📸 cámara trasera
+  // 📸 cámara trasera + 60fps
   const iniciarCamara = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { ideal: "environment" }, // trasera
+          facingMode: { ideal: "environment" },
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 60, max: 60 }, // 🔥 intento 60fps
         },
         audio: false,
       });
 
-      videoRef.current.srcObject = stream;
+      const video = videoRef.current;
+      video.srcObject = stream;
 
-      videoRef.current.onloadedmetadata = () => {
-        videoRef.current.play();
+      video.onloadedmetadata = () => {
+        video.play();
       };
 
-      setTimeout(() => detectar(), 1000);
+      iniciarLoop();
     } catch (err) {
       console.error("Error cámara:", err);
     }
   };
 
-  // 🤖 detección + medición
+  // 🔥 LOOP ULTRA FLUIDO
+  const iniciarLoop = () => {
+    const loop = async () => {
+      await detectar();
+      requestAnimationFrame(loop); // fluidez visual
+    };
+    loop();
+  };
+
+  // 🤖 detección optimizada
+  let ultimaDeteccion = 0;
+
   const detectar = async () => {
+    const ahora = Date.now();
+
+    // 🔥 IA solo cada 300ms (clave para fluidez)
+    if (ahora - ultimaDeteccion < 300) return;
+    ultimaDeteccion = ahora;
+
     if (
       modeloRef.current &&
       videoRef.current &&
@@ -63,34 +84,26 @@ export default function App() {
       predicciones.forEach((pred) => {
         const [x, y, width, height] = pred.bbox;
 
-        // 🔴 dibujar caja
         ctx.strokeStyle = "#ff4d4d";
         ctx.lineWidth = 2;
         ctx.strokeRect(x, y, width, height);
 
-        // 🧠 estimar grosor
         const grosorPx = Math.min(width, height);
-
-        // 🔥 conversión aproximada (ajustable)
         const grosorCm = (grosorPx / 50).toFixed(1);
 
-        // actualizar automáticamente
-        setGrosor(Number(grosorCm));
+        // 🔥 evita re-render innecesario
+        if (Math.abs(grosor - grosorCm) > 0.2) {
+          setGrosor(Number(grosorCm));
+        }
 
         ctx.fillStyle = "#ff4d4d";
         ctx.font = "14px Arial";
-        ctx.fillText(
-          `${pred.class} ~ ${grosorCm} cm`,
-          x,
-          y > 10 ? y - 5 : 10
-        );
+        ctx.fillText(`${pred.class} ~ ${grosorCm} cm`, x, y - 5);
       });
     }
-
-    requestAnimationFrame(detectar);
   };
 
-  // 🥩 cálculo cocción
+  // 🥩 cálculo
   const calcular = () => {
     const base = {
       "lomo vetado": 3,
@@ -134,7 +147,7 @@ export default function App() {
           🥩 Cocción Parrilla
         </h1>
 
-        {/* FORMULARIO */}
+        {/* FORM */}
         <label>Tipo de corte</label>
         <select
           value={corte}
@@ -184,7 +197,7 @@ export default function App() {
           Calcular
         </button>
 
-        {/* 📸 BOTÓN CÁMARA */}
+        {/* CAMARA */}
         <button
           onClick={iniciarCamara}
           style={{
@@ -198,10 +211,9 @@ export default function App() {
             fontWeight: "bold",
           }}
         >
-          📸 Usar cámara (medición automática)
+          📸 Cámara automática (IA)
         </button>
 
-        {/* 📸 VISOR */}
         <div
           style={{
             position: "relative",
@@ -236,7 +248,6 @@ export default function App() {
           />
         </div>
 
-        {/* RESULTADOS */}
         {resultado && (
           <div style={{ marginTop: 15 }}>
             <p>⏱️ Total: {resultado.total} min</p>
