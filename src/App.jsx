@@ -1,5 +1,14 @@
 import { useState, useRef } from "react";
+import { Analytics } from '@vercel/analytics/react';
 
+export default function App() {
+  return (
+    <>
+      <YourContent />
+      <Analytics />
+    </>
+  );
+}
 export default MyApp;
 export default function App() {
   const [corte, setCorte] = useState("lomo vetado");
